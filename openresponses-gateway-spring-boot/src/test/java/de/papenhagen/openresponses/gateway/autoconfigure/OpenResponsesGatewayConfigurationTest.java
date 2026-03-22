@@ -24,10 +24,8 @@ class OpenResponsesGatewayConfigurationTest {
 
     @Test
     void givenProperties_whenUsingDefaults_thenExposeExpectedValues() {
-        // given
         OpenResponsesGatewayProperties properties = new OpenResponsesGatewayProperties();
 
-        // then
         assertThat(properties.isEnabled()).isTrue();
         assertThat(properties.getPath()).isEqualTo("/ws/responses");
         assertThat(properties.getDefaultModel()).isEqualTo("gpt-4.1-mini");
@@ -38,10 +36,8 @@ class OpenResponsesGatewayConfigurationTest {
 
     @Test
     void givenProperties_whenSettersCalled_thenExposeConfiguredValues() {
-        // given
         OpenResponsesGatewayProperties properties = new OpenResponsesGatewayProperties();
 
-        // when
         properties.setEnabled(false);
         properties.setPath("/ws/custom");
         properties.setDefaultModel("gpt-4o");
@@ -49,7 +45,6 @@ class OpenResponsesGatewayConfigurationTest {
         properties.setMaxStoredResponses(8);
         properties.setProviderTimeout(java.time.Duration.ofSeconds(15));
 
-        // then
         assertThat(properties.isEnabled()).isFalse();
         assertThat(properties.getPath()).isEqualTo("/ws/custom");
         assertThat(properties.getDefaultModel()).isEqualTo("gpt-4o");
@@ -60,7 +55,6 @@ class OpenResponsesGatewayConfigurationTest {
 
     @Test
     void givenConfiguration_whenCreatingBeans_thenReturnWiredInstances() {
-        // given
         OpenResponsesGatewayAutoConfiguration autoConfiguration = new OpenResponsesGatewayAutoConfiguration();
         OpenResponsesGatewayProperties properties = new OpenResponsesGatewayProperties();
         ObjectMapper objectMapper = new ObjectMapper();
@@ -68,21 +62,18 @@ class OpenResponsesGatewayConfigurationTest {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(mock(ChatClient.class));
 
-        // when
         EchoTools echoTools = autoConfiguration.echoTools();
         ModelProvider modelProvider = autoConfiguration.modelProvider(builder, echoTools);
-        ModelProviderPort providerPort = autoConfiguration.modelProviderPort(modelProvider);
         GatewaySessionRepository sessionRepository = autoConfiguration.gatewaySessionRepository();
         ClientEventParser parser = autoConfiguration.clientEventParser(objectMapper, properties);
+        ModelProviderPort providerPort = modelProvider;
         ResponseLifecycleService lifecycleService = autoConfiguration.responseLifecycleService(
             parser, providerPort, sessionRepository, properties);
         AgentService agentService = autoConfiguration.agentService(lifecycleService);
         OpenResponsesHandler handler = autoConfiguration.openResponsesHandler(agentService, objectMapper);
 
-        // then
         assertThat(echoTools).isNotNull();
         assertThat(modelProvider).isInstanceOf(OpenAiProvider.class);
-        assertThat(providerPort).isNotNull();
         assertThat(sessionRepository).isNotNull();
         assertThat(parser).isNotNull();
         assertThat(lifecycleService).isNotNull();
@@ -92,17 +83,14 @@ class OpenResponsesGatewayConfigurationTest {
 
     @Test
     void givenWebSocketConfiguration_whenCreatingMapping_thenUseConfiguredPath() {
-        // given
         OpenResponsesGatewayWebSocketConfiguration configuration = new OpenResponsesGatewayWebSocketConfiguration();
         OpenResponsesGatewayProperties properties = new OpenResponsesGatewayProperties();
         properties.setPath("/ws/test");
         OpenResponsesHandler handler = mock(OpenResponsesHandler.class);
 
-        // when
         HandlerMapping mapping = configuration.openResponsesHandlerMapping(handler, properties);
         WebSocketHandlerAdapter adapter = configuration.webSocketHandlerAdapter();
 
-        // then
         assertThat(mapping).isInstanceOf(SimpleUrlHandlerMapping.class);
         assertThat(((SimpleUrlHandlerMapping) mapping).getUrlMap().get("/ws/test"))
             .isSameAs(handler);

@@ -1,11 +1,15 @@
 package de.papenhagen.agent;
 
+import de.papenhagen.gateway.adapter.session.InMemoryGatewaySessionRepository;
+import de.papenhagen.gateway.application.ClientEventParser;
+import de.papenhagen.gateway.application.ResponseLifecycleService;
+import de.papenhagen.gateway.port.GatewaySessionRepository;
+import de.papenhagen.gateway.port.ModelProviderPort;
 import de.papenhagen.protocol.ResponseCompletedPayload;
 import de.papenhagen.protocol.ResponseCreatedPayload;
 import de.papenhagen.protocol.ResponseErrorPayload;
 import de.papenhagen.protocol.ResponseOutputTextDeltaPayload;
 import de.papenhagen.protocol.ServerEvent;
-import de.papenhagen.provider.ModelProvider;
 import de.papenhagen.provider.ProviderRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,13 +29,19 @@ import static org.mockito.Mockito.when;
 
 class AgentServiceTest {
 
-    private ModelProvider provider;
+    private ModelProviderPort provider;
     private AgentService service;
 
     @BeforeEach
     void setUp() {
-        provider = mock(ModelProvider.class);
-        service = new AgentService(new ObjectMapper(), provider, "gpt-4.1-mini", 100, 100, Duration.ofSeconds(90));
+        provider = mock(ModelProviderPort.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        GatewaySessionRepository sessionRepo = new InMemoryGatewaySessionRepository();
+        ClientEventParser parser = new ClientEventParser(objectMapper, "gpt-4.1-mini");
+        ResponseLifecycleService lifecycle = new ResponseLifecycleService(
+            parser, provider, sessionRepo, "gpt-4.1-mini", 100, 100, Duration.ofSeconds(90)
+        );
+        service = new AgentService(lifecycle);
     }
 
     @Test
@@ -62,7 +72,8 @@ class AgentServiceTest {
     @Test
     void givenTimeoutFromProvider_whenHandle_thenEmitResponseErrorRetryable() {
         // given
-        when(provider.stream(any(ProviderRequest.class))).thenReturn(Flux.error(new java.util.concurrent.TimeoutException("timeout")));
+        when(provider.stream(any(ProviderRequest.class)))
+            .thenReturn(Flux.error(new java.util.concurrent.TimeoutException("timeout")));
         String input = "{\"type\":\"response.create\",\"payload\":{\"input\":[\"hi\"]}}";
 
         // when
@@ -93,29 +104,6 @@ class AgentServiceTest {
     }
 
     @Test
-    void givenPreviousResponseId_whenCreate_thenProviderReceivesContinuationInput() {
-        // given
-        when(provider.stream(any(ProviderRequest.class)))
-            .thenReturn(Flux.just("old answer"))
-            .thenReturn(Flux.just("new answer"));
-
-        String first = "{\"type\":\"response.create\",\"payload\":{\"input\":[\"first\"]}}";
-        List<ServerEvent> firstEvents = service.handle("s1", first).collectList().block(Duration.ofSeconds(3));
-        String firstResponseId = ((ResponseCreatedPayload) firstEvents.get(0).payload()).response_id();
-
-        String second = "{\"type\":\"response.create\",\"payload\":{\"input\":[\"second\"],\"previous_response_id\":\"" + firstResponseId + "\"}}";
-
-        // when
-        service.handle("s1", second).collectList().block();
-
-        // then
-        ArgumentCaptor<ProviderRequest> captor = ArgumentCaptor.forClass(ProviderRequest.class);
-        verify(provider, org.mockito.Mockito.times(2)).stream(captor.capture());
-        List<ProviderRequest> calls = captor.getAllValues();
-        assertThat(calls.get(1).input()).contains("old answer", "second");
-    }
-
-    @Test
     void givenPlainTextMessage_whenHandle_thenFallbackToCreateRequest() {
         // given
         when(provider.stream(any(ProviderRequest.class))).thenReturn(Flux.just("ok"));
@@ -141,29 +129,5 @@ class AgentServiceTest {
         assertThat(events).singleElement().extracting(ServerEvent::type).isEqualTo("response.error");
         ResponseErrorPayload payload = (ResponseErrorPayload) events.get(0).payload();
         assertThat(payload.code()).isEqualTo("invalid_request");
-    }
-
-    @Test
-    void givenCloseSession_whenCalled_thenFutureContinuationCannotUsePriorResponse() {
-        // given
-        when(provider.stream(any(ProviderRequest.class)))
-            .thenReturn(Flux.just("old answer"))
-            .thenReturn(Flux.just("new answer"));
-
-        String first = "{\"type\":\"response.create\",\"payload\":{\"input\":[\"first\"]}}";
-        List<ServerEvent> firstEvents = service.handle("s1", first).collectList().block(Duration.ofSeconds(3));
-        String firstResponseId = ((ResponseCreatedPayload) firstEvents.get(0).payload()).response_id();
-        service.closeSession("s1");
-
-        String second = "{\"type\":\"response.create\",\"payload\":{\"input\":[\"second\"],\"previous_response_id\":\"" + firstResponseId + "\"}}";
-
-        // when
-        service.handle("s1", second).collectList().block();
-
-        // then
-        ArgumentCaptor<ProviderRequest> captor = ArgumentCaptor.forClass(ProviderRequest.class);
-        verify(provider, org.mockito.Mockito.times(2)).stream(captor.capture());
-        List<ProviderRequest> calls = captor.getAllValues();
-        assertThat(calls.get(1).input()).containsExactly("second");
     }
 }

@@ -1,7 +1,7 @@
 package de.papenhagen.openresponses.gateway.autoconfigure;
 
 import de.papenhagen.agent.AgentService;
-import de.papenhagen.gateway.adapter.provider.LegacyModelProviderAdapter;
+import de.papenhagen.gateway.adapter.provider.CircuitBreakerModelProviderAdapter;
 import de.papenhagen.gateway.adapter.session.InMemoryGatewaySessionRepository;
 import de.papenhagen.gateway.application.ClientEventParser;
 import de.papenhagen.gateway.application.ResponseLifecycleService;
@@ -11,6 +11,7 @@ import de.papenhagen.provider.ModelProvider;
 import de.papenhagen.provider.OpenAiProvider;
 import de.papenhagen.tools.EchoTools;
 import de.papenhagen.ws.OpenResponsesHandler;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -19,13 +20,14 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.reactive.socket.WebSocketHandler;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Auto-configures the Open Responses WebSocket gateway for Spring Boot applications.
+ * Autoconfigures the Open Responses WebSocket gateway for Spring Boot applications.
  *
- * <p>Why: starter consumers should get sensible defaults without manual wiring, while conditional bean creation
+ * <p>Starter consumers get sensible defaults without manual wiring. Conditional bean creation
  * keeps the gateway overridable for custom providers, tools, and handlers.</p>
  */
 @AutoConfiguration
@@ -38,8 +40,14 @@ import tools.jackson.databind.ObjectMapper;
 )
 @EnableConfigurationProperties(OpenResponsesGatewayProperties.class)
 @Import(OpenResponsesGatewayWebSocketConfiguration.class)
+@Validated
 public class OpenResponsesGatewayAutoConfiguration {
 
+    /**
+     * Creates the default tool bindings.
+     *
+     * <p>EchoTools is a demo placeholder. Override this bean to wire real tool implementations.</p>
+     */
     @Bean
     @ConditionalOnMissingBean
     public EchoTools echoTools() {
@@ -49,7 +57,7 @@ public class OpenResponsesGatewayAutoConfiguration {
     /**
      * Creates the default provider bridge.
      *
-     * <p>Why: exposing {@link ModelProvider} as an overridable bean lets integrators swap provider behavior
+     * <p>Exposing {@link ModelProvider} as an overridable bean lets integrators swap provider behavior
      * without forking gateway logic.</p>
      */
     @Bean
@@ -60,8 +68,17 @@ public class OpenResponsesGatewayAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public ModelProviderPort modelProviderPort(final ModelProvider provider) {
-        return new LegacyModelProviderAdapter(provider);
+    public CircuitBreakerRegistry circuitBreakerRegistry() {
+        return CircuitBreakerRegistry.ofDefaults();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ModelProviderPort modelProviderPort(
+        final ModelProvider provider,
+        final CircuitBreakerRegistry registry
+    ) {
+        return new CircuitBreakerModelProviderAdapter(provider, registry);
     }
 
     @Bean
@@ -107,7 +124,7 @@ public class OpenResponsesGatewayAutoConfiguration {
     /**
      * Exposes the WebSocket protocol handler.
      *
-     * <p>Why: the handler is a replaceable integration point for custom framing/serialization policies.</p>
+     * <p>The handler is a replaceable integration point for custom framing/serialization policies.</p>
      */
     @Bean
     @ConditionalOnMissingBean

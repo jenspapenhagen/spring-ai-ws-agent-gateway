@@ -12,20 +12,23 @@ import de.papenhagen.protocol.ResponseErrorPayload;
 import de.papenhagen.protocol.ResponseOutputTextDeltaPayload;
 import de.papenhagen.protocol.ServerEvent;
 import de.papenhagen.provider.ProviderRequest;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import tools.jackson.databind.JsonNode;
+import java.io.IOException;
+import java.net.http.HttpConnectTimeoutException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import tools.jackson.databind.JsonNode;
 
-/**
- * Application service orchestrating response lifecycle events for one gateway session stream.
- */
 public class ResponseLifecycleService {
+
+    private static final Logger log = LoggerFactory.getLogger(ResponseLifecycleService.class);
 
     private final ClientEventParser parser;
     private final ModelProviderPort provider;
@@ -53,18 +56,12 @@ public class ResponseLifecycleService {
         this.providerTimeout = configuredProviderTimeout;
     }
 
-    /**
-     * Handles one inbound client message and emits normalized server protocol events.
-     *
-     * @param sessionId websocket session identifier
-     * @param rawMessage websocket text payload
-     * @return stream of protocol events
-     */
     public Flux<ServerEvent> handle(final String sessionId, final String rawMessage) {
         final GatewaySession session = sessions.getOrCreate(sessionId);
         return parser.parse(rawMessage)
             .flatMapMany(event -> routeEvent(session, event))
-            .onErrorResume(e -> Flux.just(errorEvent(null, "invalid_request", e.getMessage(), false)));
+            .onErrorResume(e ->
+                Flux.just(errorEvent(null, "invalid_request", "Request could not be processed", false)));
     }
 
     private Flux<ServerEvent> routeEvent(final GatewaySession session, final ClientEvent event) {
@@ -88,6 +85,7 @@ public class ResponseLifecycleService {
         }
         active.cancel();
         storeResponse(session, active.asStoredResponse("cancelled"));
+        log.info("Response cancelled: responseId={}", responseId);
         return Flux.just(
             new ServerEvent("response.cancelled", new ResponseCancelledPayload(responseId, "client_requested"))
         );
@@ -106,6 +104,8 @@ public class ResponseLifecycleService {
         final List<String> input = buildInputWithContinuation(session, request);
         input.forEach(session.history()::add);
         trimHistory(session);
+
+        log.info("Response created: responseId={}, model={}, inputCount={}", responseId, request.model(), input.size());
 
         final ServerEvent created = new ServerEvent(
             "response.created",
@@ -221,6 +221,7 @@ public class ResponseLifecycleService {
             return null;
         }
         storeResponse(session, active.asStoredResponse("completed"));
+        log.info("Response completed: responseId={}", responseId);
         return new ServerEvent("response.completed",
             new ResponseCompletedPayload(responseId, "completed", active.outputText()));
     }
@@ -236,8 +237,11 @@ public class ResponseLifecycleService {
         }
         storeResponse(session, active.asStoredResponse("failed"));
         final String outputText = active.outputText();
+        final String code = errorCode(error);
+        final boolean retryable = isRetryable(error);
+        log.warn("Provider error: responseId={}, code={}", responseId, code, error);
         return Flux.just(
-            errorEvent(responseId, errorCode(error), safeMessage(error), isRetryable(error)),
+            errorEvent(responseId, code, safeMessage(error), retryable),
             new ServerEvent("response.completed", new ResponseCompletedPayload(responseId, "failed", outputText))
         );
     }
@@ -255,22 +259,16 @@ public class ResponseLifecycleService {
 
     private void trimHistory(final GatewaySession session) {
         while (session.history().size() > maxHistoryItems) {
-            if (!session.history().isEmpty()) {
-                session.history().remove(0);
-            }
+            session.history().pollFirst();
         }
     }
 
-    /**
-     * Closes and removes one session and cancels any active responses.
-     *
-     * @param sessionId websocket session identifier
-     */
     public void closeSession(final String sessionId) {
         final GatewaySession session = sessions.remove(sessionId);
         if (session == null) {
             return;
         }
+        log.info("Session closed: sessionId={}", sessionId);
         session.clear();
     }
 
@@ -284,18 +282,51 @@ public class ResponseLifecycleService {
     }
 
     private String safeMessage(final Throwable error) {
-        final String message = error.getMessage();
-        return (message == null || message.isBlank()) ? error.getClass().getSimpleName() : message;
+        return switch (errorCode(error)) {
+            case "provider_timeout" -> "Request timed out";
+            case "provider_unauthorized" -> "Authentication failed";
+            case "provider_forbidden" -> "Access denied";
+            case "provider_rate_limited" -> "Rate limit exceeded";
+            case "provider_unavailable" -> "Provider temporarily unavailable";
+            case "provider_bad_request" -> "Invalid request";
+            default -> "Provider error";
+        };
     }
 
     private String errorCode(final Throwable error) {
-        if (error instanceof TimeoutException) {
+        if (error instanceof TimeoutException || error instanceof HttpConnectTimeoutException) {
             return "provider_timeout";
+        }
+        if (error instanceof IOException) {
+            final String ioName = error.getClass().getSimpleName();
+            if (ioName.contains("Timeout") || ioName.contains("Connect")) {
+                return "provider_timeout";
+            }
+            return "provider_unavailable";
+        }
+        final String name = error.getClass().getSimpleName();
+        if (name.contains("Unauthorized") || name.contains("401")) {
+            return "provider_unauthorized";
+        }
+        if (name.contains("Forbidden") || name.contains("403")) {
+            return "provider_forbidden";
+        }
+        if (name.contains("RateLimit") || name.contains("429") || name.contains("TooMany")) {
+            return "provider_rate_limited";
+        }
+        if (name.contains("BadRequest") || name.contains("400")) {
+            return "provider_bad_request";
+        }
+        if (name.contains("ServiceUnavailable") || name.contains("503") || name.contains("GatewayTimeout")) {
+            return "provider_unavailable";
         }
         return "provider_error";
     }
 
     private boolean isRetryable(final Throwable error) {
-        return error instanceof TimeoutException;
+        final String code = errorCode(error);
+        return "provider_timeout".equals(code)
+            || "provider_rate_limited".equals(code)
+            || "provider_unavailable".equals(code);
     }
 }

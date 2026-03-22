@@ -1,5 +1,7 @@
 package de.papenhagen.openresponses.gateway.autoconfigure;
 
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -8,8 +10,11 @@ public class OpenResponsesGatewayProperties {
     private boolean enabled = true;
     private String path = "/ws/responses";
     private String defaultModel = "gpt-4.1-mini";
+    @Min(1)
     private int maxHistoryItems = 100;
+    @Min(1)
     private int maxStoredResponses = 100;
+    @Positive
     private Duration providerTimeout = Duration.ofSeconds(90);
 
     public boolean isEnabled() {
