@@ -1,0 +1,15 @@
+
+openresponses:
+  gateway:
+    enabled: ${OPENRESPONSES_GATEWAY_ENABLED:true}
+    path: ${OPENRESPONSES_GATEWAY_PATH:/ws/responses}
+    default-model: ${OPENAI_DEFAULT_MODEL:gpt-4.1-mini}
+    max-history-items: ${APP_MAX_HISTORY_ITEMS:100}
+    max-stored-responses: ${APP_MAX_STORED_RESPONSES:100}
+    provider-timeout: ${OPENRESPONSES_PROVIDER_TIMEOUT:90s}
+
+spring:
+  ai:
+    openai:
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      api-key: ${OPENAI_API_KEY:}
