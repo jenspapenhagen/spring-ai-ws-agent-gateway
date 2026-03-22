@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  JAVA_VERSION: '21'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+      - uses: actions/setup-gpg@v4
+        with:
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Import GPG key
+        run: echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+      - name: Deploy to Maven Central
+        env:
+          SONATYPE_OSSRH_USERNAME: ${{ secrets.SONATYPE_OSSRH_USERNAME }}
+          SONATYPE_OSSRH_PASSWORD: ${{ secrets.SONATYPE_OSSRH_PASSWORD }}
+        run: |
+          mvn deploy \
+            -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
+            -DskipTests \
+            -P release

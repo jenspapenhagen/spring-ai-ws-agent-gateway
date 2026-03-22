@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      spring-boot:
+        patterns:
+          - 'org.springframework.boot:*'
+      spring-ai:
+        patterns:
+          - 'org.springframework.ai:*'
+      resilience4j:
+        patterns:
+          - 'io.github.resilience4j:*'

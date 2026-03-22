@@ -12,6 +12,7 @@ import de.papenhagen.protocol.ResponseErrorPayload;
 import de.papenhagen.protocol.ResponseOutputTextDeltaPayload;
 import de.papenhagen.protocol.ServerEvent;
 import de.papenhagen.provider.ProviderRequest;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import java.io.IOException;
 import java.net.http.HttpConnectTimeoutException;
 import java.time.Duration;
@@ -239,7 +240,11 @@ public class ResponseLifecycleService {
         final String outputText = active.outputText();
         final String code = errorCode(error);
         final boolean retryable = isRetryable(error);
-        log.warn("Provider error: responseId={}, code={}", responseId, code, error);
+        if (error instanceof CallNotPermittedException) {
+            log.warn("Circuit breaker open: responseId={}", responseId);
+        } else {
+            log.warn("Provider error: responseId={}, code={}", responseId, code, error);
+        }
         return Flux.just(
             errorEvent(responseId, code, safeMessage(error), retryable),
             new ServerEvent("response.completed", new ResponseCompletedPayload(responseId, "failed", outputText))
@@ -282,6 +287,9 @@ public class ResponseLifecycleService {
     }
 
     private String safeMessage(final Throwable error) {
+        if (error instanceof CallNotPermittedException) {
+            return "Circuit breaker open, provider unavailable";
+        }
         return switch (errorCode(error)) {
             case "provider_timeout" -> "Request timed out";
             case "provider_unauthorized" -> "Authentication failed";
@@ -294,6 +302,9 @@ public class ResponseLifecycleService {
     }
 
     private String errorCode(final Throwable error) {
+        if (error instanceof CallNotPermittedException) {
+            return "circuit_breaker_open";
+        }
         if (error instanceof TimeoutException || error instanceof HttpConnectTimeoutException) {
             return "provider_timeout";
         }
@@ -324,6 +335,9 @@ public class ResponseLifecycleService {
     }
 
     private boolean isRetryable(final Throwable error) {
+        if (error instanceof CallNotPermittedException) {
+            return true;
+        }
         final String code = errorCode(error);
         return "provider_timeout".equals(code)
             || "provider_rate_limited".equals(code)

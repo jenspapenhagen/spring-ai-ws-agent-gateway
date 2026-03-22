@@ -17,12 +17,12 @@ class OpenAIProviderTest {
 
     @Test
     void givenProviderRequest_whenStream_thenUseSpringAiToolsAndReturnTokenFlux() {
-        // given
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         ChatClient chatClient = mock(ChatClient.class);
         ChatClient.ChatClientRequestSpec requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         ChatClient.StreamResponseSpec streamSpec = mock(ChatClient.StreamResponseSpec.class);
         EchoTools tools = new EchoTools();
+        List<Object> toolList = List.of(tools);
 
         when(builder.build()).thenReturn(chatClient);
         when(chatClient.prompt()).thenReturn(requestSpec);
@@ -32,13 +32,11 @@ class OpenAIProviderTest {
         when(requestSpec.stream()).thenReturn(streamSpec);
         when(streamSpec.content()).thenReturn(Flux.just("a", "b"));
 
-        OpenAiProvider provider = new OpenAiProvider(builder, tools);
+        OpenAiProvider provider = new OpenAiProvider(builder, toolList);
         ProviderRequest request = new ProviderRequest("gpt-4.1-mini", List.of("hello", "world"), "r1", null);
 
-        // when
         List<String> output = provider.stream(request).collectList().block();
 
-        // then
         assertThat(output).containsExactly("a", "b");
         verify(requestSpec).tools(tools);
     }

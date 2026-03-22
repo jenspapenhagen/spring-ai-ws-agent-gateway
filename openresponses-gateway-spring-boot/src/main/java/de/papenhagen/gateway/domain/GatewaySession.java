@@ -75,10 +75,11 @@ public class GatewaySession {
         }
 
         public void setSubscription(final Disposable disposableSubscription) {
-            this.subscription = disposableSubscription;
             if (terminal.get()) {
                 disposableSubscription.dispose();
+                return;
             }
+            this.subscription = disposableSubscription;
         }
 
         public boolean markTerminal() {

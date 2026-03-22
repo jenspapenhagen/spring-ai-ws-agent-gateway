@@ -1,8 +1,8 @@
 package de.papenhagen.openresponses.gateway.autoconfigure;
 
 import de.papenhagen.agent.AgentService;
-import de.papenhagen.gateway.adapter.provider.CircuitBreakerModelProviderAdapter;
-import de.papenhagen.gateway.adapter.session.InMemoryGatewaySessionRepository;
+import de.papenhagen.gateway.decorator.CircuitBreakerModelProviderAdapter;
+import de.papenhagen.gateway.decorator.InMemoryGatewaySessionRepository;
 import de.papenhagen.gateway.application.ClientEventParser;
 import de.papenhagen.gateway.application.ResponseLifecycleService;
 import de.papenhagen.gateway.port.GatewaySessionRepository;
@@ -12,6 +12,7 @@ import de.papenhagen.provider.OpenAiProvider;
 import de.papenhagen.tools.EchoTools;
 import de.papenhagen.ws.OpenResponsesHandler;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -50,20 +51,14 @@ public class OpenResponsesGatewayAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
-    public EchoTools echoTools() {
-        return new EchoTools();
+    public List<Object> gatewayTools(final EchoTools echoTools) {
+        return List.of(echoTools);
     }
 
-    /**
-     * Creates the default provider bridge.
-     *
-     * <p>Exposing {@link ModelProvider} as an overridable bean lets integrators swap provider behavior
-     * without forking gateway logic.</p>
-     */
     @Bean
     @ConditionalOnMissingBean(ModelProvider.class)
-    public ModelProvider modelProvider(final ChatClient.Builder builder, final EchoTools echoTools) {
-        return new OpenAiProvider(builder, echoTools);
+    public ModelProvider modelProvider(final ChatClient.Builder builder, final List<Object> gatewayTools) {
+        return new OpenAiProvider(builder, gatewayTools);
     }
 
     @Bean

@@ -1,6 +1,6 @@
 package de.papenhagen.agent;
 
-import de.papenhagen.gateway.adapter.session.InMemoryGatewaySessionRepository;
+import de.papenhagen.gateway.decorator.InMemoryGatewaySessionRepository;
 import de.papenhagen.gateway.application.ClientEventParser;
 import de.papenhagen.gateway.application.ResponseLifecycleService;
 import de.papenhagen.gateway.port.GatewaySessionRepository;

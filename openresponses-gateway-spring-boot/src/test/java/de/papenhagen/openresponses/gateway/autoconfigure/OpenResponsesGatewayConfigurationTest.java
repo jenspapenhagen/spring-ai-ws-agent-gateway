@@ -16,6 +16,8 @@ import org.springframework.web.reactive.handler.SimpleUrlHandlerMapping;
 import org.springframework.web.reactive.socket.server.support.WebSocketHandlerAdapter;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -62,8 +64,8 @@ class OpenResponsesGatewayConfigurationTest {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         when(builder.build()).thenReturn(mock(ChatClient.class));
 
-        EchoTools echoTools = autoConfiguration.echoTools();
-        ModelProvider modelProvider = autoConfiguration.modelProvider(builder, echoTools);
+        List<Object> toolList = autoConfiguration.gatewayTools(new EchoTools());
+        ModelProvider modelProvider = autoConfiguration.modelProvider(builder, toolList);
         GatewaySessionRepository sessionRepository = autoConfiguration.gatewaySessionRepository();
         ClientEventParser parser = autoConfiguration.clientEventParser(objectMapper, properties);
         ModelProviderPort providerPort = modelProvider;
@@ -72,7 +74,7 @@ class OpenResponsesGatewayConfigurationTest {
         AgentService agentService = autoConfiguration.agentService(lifecycleService);
         OpenResponsesHandler handler = autoConfiguration.openResponsesHandler(agentService, objectMapper);
 
-        assertThat(echoTools).isNotNull();
+        assertThat(toolList).isNotNull();
         assertThat(modelProvider).isInstanceOf(OpenAiProvider.class);
         assertThat(sessionRepository).isNotNull();
         assertThat(parser).isNotNull();
