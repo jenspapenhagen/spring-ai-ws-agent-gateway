@@ -56,6 +56,15 @@ class OpenResponsesGatewayConfigurationTest {
     }
 
     @Test
+    void givenProperties_whenSettingSessionTtl_thenExposeConfiguredValue() {
+        OpenResponsesGatewayProperties properties = new OpenResponsesGatewayProperties();
+        assertThat(properties.getSessionTtl().toMinutes()).isEqualTo(30);
+
+        properties.setSessionTtl(java.time.Duration.ofMinutes(60));
+        assertThat(properties.getSessionTtl().toMinutes()).isEqualTo(60);
+    }
+
+    @Test
     void givenConfiguration_whenCreatingBeans_thenReturnWiredInstances() {
         OpenResponsesGatewayAutoConfiguration autoConfiguration = new OpenResponsesGatewayAutoConfiguration();
         OpenResponsesGatewayProperties properties = new OpenResponsesGatewayProperties();
@@ -66,7 +75,7 @@ class OpenResponsesGatewayConfigurationTest {
 
         List<Object> toolList = autoConfiguration.gatewayTools(new EchoTools());
         ModelProvider modelProvider = autoConfiguration.modelProvider(builder, toolList);
-        GatewaySessionRepository sessionRepository = autoConfiguration.gatewaySessionRepository();
+        GatewaySessionRepository sessionRepository = autoConfiguration.inMemoryGatewaySessionRepository();
         ClientEventParser parser = autoConfiguration.clientEventParser(objectMapper, properties);
         ModelProviderPort providerPort = modelProvider;
         ResponseLifecycleService lifecycleService = autoConfiguration.responseLifecycleService(

@@ -82,14 +82,16 @@ Registration file:
 
 Prefix: `openresponses.gateway`
 
-| Property               | Default         | Description                                                 |
-|------------------------|-----------------|-------------------------------------------------------------|
-| `enabled`              | `true`          | Enable or disable the gateway.                              |
-| `path`                 | `/ws/responses` | WebSocket endpoint path.                                    |
-| `default-model`        | `gpt-4.1-mini`  | Model used when client omits `model` in `response.create`.  |
-| `max-history-items`    | `100`           | Maximum history entries retained per session. Minimum: `1`. |
-| `max-stored-responses` | `100`           | Maximum past responses retained per session. Minimum: `1`.  |
-| `provider-timeout`     | `90s`           | Timeout for provider streaming calls. Minimum: `1ms`.       |
+| Property                | Default          | Description                                                           |
+|-------------------------|-----------------|----------------------------------------------------------------------|
+| `enabled`               | `true`          | Enable or disable the gateway.                                       |
+| `path`                  | `/ws/responses` | WebSocket endpoint path.                                             |
+| `default-model`         | `gpt-4.1-mini`  | Model used when client omits `model` in `response.create`.             |
+| `max-history-items`     | `100`           | Maximum history entries retained per session. Minimum: `1`.           |
+| `max-stored-responses`  | `100`           | Maximum past responses retained per session. Minimum: `1`.           |
+| `provider-timeout`      | `90s`           | Timeout for provider streaming calls. Minimum: `1ms`.                 |
+| `session-store`         | `memory`        | Session repository: `memory` (default) or `redis`.                  |
+| `session-ttl`          | `30m`           | TTL for sessions in Redis. Only used when `session-store=redis`.     |
 
 Provider credentials are configured via Spring AI OpenAI properties:
 
@@ -182,6 +184,33 @@ Internal details (API keys, file paths, internal IPs) are never leaked in error 
 Provider calls are wrapped with a Resilience4j circuit breaker. After a configurable failure threshold, the breaker opens and immediately rejects new requests with `circuit_breaker_open` rather than hammering a struggling provider.
 
 Default behavior uses `CircuitBreakerRegistry.ofDefaults()`. Override the `CircuitBreakerRegistry` bean to configure failure thresholds, wait times, and sliding window parameters.
+
+## Session Persistence
+
+Sessions store conversation history, past responses, and ordering state. Two storage backends are available:
+
+### In-memory (default)
+
+Sessions live in a `ConcurrentHashMap` on the JVM heap. Suitable for single-instance deployments or local development. Sessions are lost on restart.
+
+### Redis
+
+Set `openresponses.gateway.session-store=redis` to persist sessions across restarts and across multiple gateway instances. Active in-flight responses are ephemeral — only completed responses survive serialization.
+
+Redis connection is configured via Spring Data Redis properties:
+
+```bash
+spring.data.redis.host=localhost
+spring.data.redis.port=6379
+```
+
+Start Redis locally via the provided compose file:
+
+```bash
+docker compose up -d redis
+```
+
+Session TTL is controlled via `openresponses.gateway.session-ttl` (default: `30m`). Idle sessions expire automatically. Each gateway request refreshes the TTL.
 
 ## Tool Support
 

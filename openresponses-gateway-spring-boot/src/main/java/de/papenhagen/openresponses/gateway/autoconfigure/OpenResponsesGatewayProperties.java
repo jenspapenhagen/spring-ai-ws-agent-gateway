@@ -16,6 +16,7 @@ public class OpenResponsesGatewayProperties {
     private int maxStoredResponses = 100;
     @Positive
     private Duration providerTimeout = Duration.ofSeconds(90);
+    private Duration sessionTtl = Duration.ofMinutes(30);
 
     public boolean isEnabled() {
         return enabled;
@@ -63,5 +64,13 @@ public class OpenResponsesGatewayProperties {
 
     public void setProviderTimeout(final Duration configuredProviderTimeout) {
         this.providerTimeout = configuredProviderTimeout;
+    }
+
+    public Duration getSessionTtl() {
+        return sessionTtl;
+    }
+
+    public void setSessionTtl(final Duration ttl) {
+        this.sessionTtl = ttl;
     }
 }

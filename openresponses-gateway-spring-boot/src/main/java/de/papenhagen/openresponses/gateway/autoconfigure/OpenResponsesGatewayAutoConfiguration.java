@@ -3,6 +3,7 @@ package de.papenhagen.openresponses.gateway.autoconfigure;
 import de.papenhagen.agent.AgentService;
 import de.papenhagen.gateway.decorator.CircuitBreakerModelProviderAdapter;
 import de.papenhagen.gateway.decorator.InMemoryGatewaySessionRepository;
+import de.papenhagen.gateway.decorator.RedisGatewaySessionRepository;
 import de.papenhagen.gateway.application.ClientEventParser;
 import de.papenhagen.gateway.application.ResponseLifecycleService;
 import de.papenhagen.gateway.port.GatewaySessionRepository;
@@ -21,6 +22,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.reactive.socket.WebSocketHandler;
 import tools.jackson.databind.ObjectMapper;
@@ -77,8 +79,23 @@ public class OpenResponsesGatewayAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean
-    public GatewaySessionRepository gatewaySessionRepository() {
+    @ConditionalOnProperty(
+        prefix = "openresponses.gateway",
+        name = "session-store",
+        havingValue = "redis"
+    )
+    @ConditionalOnMissingBean(GatewaySessionRepository.class)
+    public GatewaySessionRepository redisGatewaySessionRepository(
+        final StringRedisTemplate template,
+        final ObjectMapper objectMapper,
+        final OpenResponsesGatewayProperties properties
+    ) {
+        return new RedisGatewaySessionRepository(template, objectMapper, properties.getSessionTtl());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(GatewaySessionRepository.class)
+    public GatewaySessionRepository inMemoryGatewaySessionRepository() {
         return new InMemoryGatewaySessionRepository();
     }
 
